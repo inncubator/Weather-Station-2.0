@@ -105,10 +105,10 @@ void refreshWeather(UBYTE *image, WeatherState weather,
   // 2. Messwerte
   String tempStr     = String(temp,  1) + " ^C";
   String humStr      = String(hum,   1) + " %";
-  String pressureStr = String(p_qnh, 1) + " hPa";
-  Paint_DrawString_EN(70,  59, tempStr.c_str(),     &Font16, BLACK, WHITE);
-  Paint_DrawString_EN(70, 105, humStr.c_str(),      &Font16, BLACK, WHITE);
-  Paint_DrawString_EN(20, 150, pressureStr.c_str(), &Font16, BLACK, WHITE);
+  String pressureStr = String(p_qnh, 0) + " hPa";
+  Paint_DrawString_EN(55,  59, tempStr.c_str(),     &Font16, BLACK, WHITE);
+  Paint_DrawString_EN(55, 105, humStr.c_str(),      &Font16, BLACK, WHITE);
+  Paint_DrawString_EN(45, 150, pressureStr.c_str(), &Font16, BLACK, WHITE);
 
   // 3. Akkubalken
  
@@ -129,28 +129,28 @@ void refreshWeather(UBYTE *image, WeatherState weather,
   }
 
   // 4. Wettericon — gleicher Bereich wie früher der Humidity-Indicator
-  Paint_ClearWindows(0, 180, 155, 255, BLACK);
+  Paint_ClearWindows(5, 180, 115, 241, BLACK);
   const char *label = "";
   switch (weather) {
     case WEATHER_SUNNY:
-      Paint_DrawImage(Weather_Sunny,    16, 189, 120, 60);
+      Paint_DrawImage(Weather_Sunny,    51, 185, 56, 50);
       label = "Sonnig";
       break;
     case WEATHER_PARTLY:
-      Paint_DrawImage(Weather_Partly,   16, 189, 120, 60);
+      Paint_DrawImage(Weather_Partly,   51, 185, 50, 50);
       label = "Wechselnd";
       break;
     case WEATHER_CHANGING:
-      Paint_DrawImage(Weather_Changing, 16, 189, 120, 60);
+      Paint_DrawImage(Weather_Changing, 51, 185, 50, 50);
       label = "Wechselhaft";
       break;
     case WEATHER_BAD:
-      Paint_DrawImage(Weather_Bad,      16, 189, 120, 60);
+      Paint_DrawImage(Weather_Bad,      51, 185, 50, 50);
       label = "Schlecht";
       break;
     case WEATHER_UNKNOWN:
     default:
-      Paint_DrawImage(Weather_Unknown,  16, 189, 120, 60);
+      Paint_DrawImage(Weather_Unknown,  51, 185, 56, 56);
       label = "Kein Trend";
       break;
   }
@@ -307,7 +307,7 @@ void loop() {
   WeatherState weather = pressureHistoryReady()
                            ? classifyWeather(p_qnh, trend)
                            : WEATHER_UNKNOWN;
-  Serial.printf("[Weather] %s | QNH: %.1f hPa | Trend: %.2f hPa/3h\n",
+  Serial.printf("[Weather] %s | QNH: %.1f hPa | Trend: %.1f hPa/3h\n",
                 weatherStateToString(weather), p_qnh, trend);
 
   // ── Blynk verbinden, NTP holen, Daten senden ─────────────────────────
