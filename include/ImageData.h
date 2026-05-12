@@ -58,5 +58,15 @@ extern const unsigned char gImage_2in66[];
 
 extern const unsigned char gImage_inc[];
 
+extern const unsigned char Weather_Sunny[];
+
+extern const unsigned char Weather_Partly[];
+
+extern const unsigned char Weather_Changing[];
+
+extern const unsigned char Weather_Bad[];
+
+extern const unsigned char Weather_Unknown[];
+
 #endif
 /* FILE END */

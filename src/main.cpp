@@ -1,7 +1,7 @@
 // ---------- BLYNK settings ----------
-#define BLYNK_TEMPLATE_ID "TMPL4KNN1-VFn"
-#define BLYNK_TEMPLATE_NAME "WeatherStation2.0"
-#define BLYNK_FIRMWARE_VERSION        "1.0"
+//#define BLYNK_TEMPLATE_ID      "TMPL4KNN1-VFn"
+//#define BLYNK_TEMPLATE_NAME    "WeatherStation2.0"
+#define BLYNK_FIRMWARE_VERSION "1.0"
 #define BLYNK_PRINT Serial
 
 // ---------- DEBUG OPTIONS ----------
@@ -21,177 +21,181 @@
 #include <Adafruit_MAX1704X.h>
 #include <Adafruit_MPL3115A2.h>
 #include "BlynkEdgent.h"
-#include "DEV_Config.h" 
+#include "DEV_Config.h"
 #include "EPD.h"
 #include "GUI_Paint.h"
 #include "imagedata.h"
 #include "time.h"
+#include "Pressure.h"
 
 // ---------- MISC ----------
-Adafruit_SHTC3 shtc3 = Adafruit_SHTC3();
-Adafruit_MAX17048 maxlipo;
+Adafruit_SHTC3     shtc3 = Adafruit_SHTC3();
+Adafruit_MAX17048  maxlipo;
 Adafruit_MPL3115A2 mpl;
 
-// ---------- FUNCTIONS ----------
+// ==========================================================================
+// SENSOR FUNCTIONS
+// ==========================================================================
+
+BLYNK_WRITE(V3) {
+  uint16_t alt = param.asInt();
+  EEPROM.put(1, alt);     // ← put() statt write(), Byte 1 statt 0
+  EEPROM.commit();
+  delay(100);
+  PRESSURE_ALTITUDE_M = (float)alt;
+}
 
 
-// neu
-void readData(float *temp, float *hum){
+void readData(float *temp, float *hum, float *batteryPercent) {
   sensors_event_t humidity, temperature;
-
   if (!shtc3.getEvent(&humidity, &temperature)) {
     Serial.println("Failed to read from SHTC3 sensor!");
     return;
   }
-
   *temp = temperature.temperature;
-  *hum = humidity.relative_humidity;
-
+  *hum  = humidity.relative_humidity;
   if (isnan(*hum) || isnan(*temp)) {
     Serial.println("Invalid SHTC3 data!");
-    return;
   }
+  *batteryPercent = maxlipo.cellPercent();
+
+  if (*batteryPercent < 0) *batteryPercent = 0;
+  if (*batteryPercent > 100) *batteryPercent = 100;
 }
 
 void readPressure(float *pressure) {
-  *pressure = mpl.getPressure();  // Druck in hPa
-
+  *pressure = mpl.getPressure();
   if (isnan(*pressure)) {
     Serial.println("Failed to read pressure from MPL3115A2!");
     return;
   }
-
   Serial.print("Pressure: ");
   Serial.print(*pressure, 1);
   Serial.println(" hPa");
 }
 
-// Function to partially refresh data
-void refreshData(UBYTE *image, float temp, float hum, float pressure){
-  EPD_2IN66_Init_Partial();
+// ==========================================================================
+// BLYNK
+// ==========================================================================
 
-  String tempstring = String(temp,1) + " ^C";                                        // Create temperature string
-  String humstring = String(hum,1) + " %";                                           // Create humidity string
-  String pressureString = String(pressure, 1) + " hPa";
-  Paint_ClearWindows(70, 57, 296, 140, BLACK);        
-  Paint_DrawString_EN(70, 59, tempstring.c_str(), &Font16, BLACK, WHITE);          // Draw new values in window
-  Paint_DrawString_EN(70, 105, humstring.c_str(), &Font16, BLACK, WHITE);            // Draw new values in window
-  Paint_DrawString_EN(50, 150, pressureString.c_str(), &Font16, BLACK, WHITE);
-  // Paint_DrawString_EN(98, 133, "o", &Font16, BLACK, WHITE);                      // Draw new values in window
-  // EPD_2IN66_Display(image);                                                      // Display image with new values
-  // EPD_2IN66_Sleep();                                                             // Put display in low power (sleep) mode
+void sendData(float *temp, float *hum, float p_qnh, float batteryPercent) {
+  Blynk.virtualWrite(V0, *temp);
+  Blynk.virtualWrite(V1, *hum);
+  Blynk.virtualWrite(V2, p_qnh);
+  Blynk.virtualWrite(V4, batteryPercent);
 }
 
-void refreshTime(UBYTE *image) {
-  struct tm timeinfo;
+// ==========================================================================
+// DISPLAY — einzige Funktion die EPD_2IN66_Display aufruft
+// Zeichnet in dieser Reihenfolge:
+//   1. InnCubator-Logo (Hintergrund)
+//   2. Messwerte (Temp / Hum / Druck)
+//   3. Akkubalken
+//   4. Wettericon + Label  (Platz des früheren Humidity-Indicators)
+//   5. Uhrzeit
+//   6. EPD_2IN66_Display + Sleep
+// ==========================================================================
 
-  if (!getLocalTime(&timeinfo)) {
-    Serial.println("Failed to obtain time");
-    return;
-  }
+void refreshWeather(UBYTE *image, WeatherState weather,
+                    float temp, float hum, float p_qnh, float batteryPercent) {
 
-  char timeString[20];
-  strftime(timeString, sizeof(timeString), "%H:%M", &timeinfo);
+  // 1. InnCubator-Hintergrund (überschreibt ganzen Buffer)
+  Paint_DrawBitMap(gImage_inc);
 
-  Serial.print("Last measurement time: ");
-  Serial.println(timeString);
+  // 2. Messwerte
+  String tempStr     = String(temp,  1) + " ^C";
+  String humStr      = String(hum,   1) + " %";
+  String pressureStr = String(p_qnh, 1) + " hPa";
+  Paint_DrawString_EN(70,  59, tempStr.c_str(),     &Font16, BLACK, WHITE);
+  Paint_DrawString_EN(70, 105, humStr.c_str(),      &Font16, BLACK, WHITE);
+  Paint_DrawString_EN(20, 150, pressureStr.c_str(), &Font16, BLACK, WHITE);
 
-  // Bereich unten löschen
-  Paint_ClearWindows(80, 240, 220, 260, BLACK);
-
-  // Uhrzeit zeichnen
-  Paint_DrawString_EN(5, 260, timeString, &Font16, BLACK, WHITE);
-}
-
-// Function to partially refresh the indicator smiley
-void refreshIndicator(UBYTE *image, float hum){
-  // EPD_2IN66_Init_Partial();
-  Paint_ClearWindows(0, 180, 155, 255, BLACK);                                      // Clear specific window
-  // Draw specific image depending on the humidity
-  if((40.0f <= hum) && (hum <= 60.0f)) Paint_DrawImage(Humidity_good, 0, 189, 152, 60);
-  else if((hum < 40.0f) && (hum >= 30.0f)) Paint_DrawImage(Humidity_low, 0, 189, 152, 60);
-  else if(hum < 30.0f) Paint_DrawImage(Humidity_very_low, 0, 189, 152, 60);
-  else if((hum > 60.0f) && (hum <= 70.0f)) Paint_DrawImage(Humidity_high, 0, 189, 152, 60);
-  else Paint_DrawImage(Humidity_very_high, 0, 189, 152, 60);
-  EPD_2IN66_Display(image);                                                         // Display image with new values
-  EPD_2IN66_Sleep();                                                                // Put display in low power (sleep) mode
-}
-
-// Function to read data from the DHT20 sensor and send it to blynk
-void sendData(float *temp, float *hum){
-  Blynk.virtualWrite(V5, *temp);                                                    // Send temperature value to Virtual Pin 5 (V5)
-  Blynk.virtualWrite(V6, *hum);                                                     // Send humidity value to Virtual Pin 6 (V6)
-}
-
-void refreshBattery(UBYTE *image) {
-  float batteryPercent = maxlipo.cellPercent();
-
-  if (batteryPercent < 0) batteryPercent = 0;
-  if (batteryPercent > 100) batteryPercent = 100;
-
+  // 3. Akkubalken
+ 
   int bars = 0;
 
-  if (batteryPercent >= 90) bars = 5;
+  if      (batteryPercent >= 90) bars = 5;
   else if (batteryPercent >= 70) bars = 4;
   else if (batteryPercent >= 50) bars = 3;
   else if (batteryPercent >= 30) bars = 2;
   else if (batteryPercent >= 10) bars = 1;
-  else bars = 0;
-
-  // ----- Serielle Ausgabe -----
   Serial.print("Battery: ");
   Serial.print(batteryPercent, 1);
   Serial.print("%  -> Bars: ");
   Serial.println(bars);
-
-  // Bereich oben im Rechteck löschen
-  Paint_ClearWindows(10, 9, 144, 19, BLACK);
-  // 5 Balken
-  int startX = 10;
-  int startY = 9;
-  int barWidth = 22;
-  int barHeight = 10;
-  int gap = 6;
-
   for (int i = 0; i < bars; i++) {
-    int x1 = startX + i * (barWidth + gap);
-    int y1 = startY;
-    int x2 = x1 + barWidth;
-    int y2 = y1 + barHeight;
-
-    Paint_DrawRectangle(x1, y1, x2, y2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+    int x1 = 10 + i * (22 + 6);   // barWidth=22, gap=6
+    Paint_DrawRectangle(x1, 9, x1 + 22, 19, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
   }
+
+  // 4. Wettericon — gleicher Bereich wie früher der Humidity-Indicator
+  Paint_ClearWindows(0, 180, 155, 255, BLACK);
+  const char *label = "";
+  switch (weather) {
+    case WEATHER_SUNNY:
+      Paint_DrawImage(Weather_Sunny,    16, 189, 120, 60);
+      label = "Sonnig";
+      break;
+    case WEATHER_PARTLY:
+      Paint_DrawImage(Weather_Partly,   16, 189, 120, 60);
+      label = "Wechselnd";
+      break;
+    case WEATHER_CHANGING:
+      Paint_DrawImage(Weather_Changing, 16, 189, 120, 60);
+      label = "Wechselhaft";
+      break;
+    case WEATHER_BAD:
+      Paint_DrawImage(Weather_Bad,      16, 189, 120, 60);
+      label = "Schlecht";
+      break;
+    case WEATHER_UNKNOWN:
+    default:
+      Paint_DrawImage(Weather_Unknown,  16, 189, 120, 60);
+      label = "Kein Trend";
+      break;
+  }
+  Paint_DrawString_EN(5, 243, label, &Font12, BLACK, WHITE);
+
+  // 5. Uhrzeit
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    char timeString[10];
+    strftime(timeString, sizeof(timeString), "%H:%M", &timeinfo);
+    Serial.print("Zeit: ");
+    Serial.println(timeString);
+    Paint_DrawString_EN(35, 258, timeString, &Font16, BLACK, WHITE);
+  }
+
+  // 6. Finaler Display-Call
+  EPD_2IN66_Display(image);
+  EPD_2IN66_Sleep();
 }
 
+// ==========================================================================
+// HILFSFUNKTIONEN
+// ==========================================================================
+
 bool isLongPress() {
-  if (digitalRead(WAKE_BUTTON_PIN) == HIGH) {
-    return false;
-  }
-
+  if (digitalRead(WAKE_BUTTON_PIN) == HIGH) return false;
   unsigned long pressStart = millis();
-
   while (digitalRead(WAKE_BUTTON_PIN) == LOW) {
-    if (millis() - pressStart >= LONG_PRESS_TIME) {
-      return true;
-    }
+    if (millis() - pressStart >= LONG_PRESS_TIME) return true;
     delay(10);
   }
-
   return false;
 }
 
 void showStatusPage(UBYTE *image) {
   Paint_Clear(WHITE);
-
   Paint_DrawString_EN(5, 5, "STATUS", &Font20, WHITE, BLACK);
 
   if (Blynk.connected()) {
-    Paint_DrawString_EN(5, 60, "WLAN: connected", &Font12, WHITE, BLACK);
+    Paint_DrawString_EN(5, 60, "WLAN: connected",  &Font12, WHITE, BLACK);
     String ssidText = "SSID: " + WiFi.SSID();
-    Paint_DrawString_EN(5, 70, ssidText.c_str(), &Font12, WHITE, BLACK);
+    Paint_DrawString_EN(5, 70, ssidText.c_str(),   &Font12, WHITE, BLACK);
     Paint_DrawString_EN(5, 90, "Blynk: connected", &Font12, WHITE, BLACK);
   } else {
-    Paint_DrawString_EN(5, 60, "WLAN: not connected", &Font12, WHITE, BLACK);
+    Paint_DrawString_EN(5, 60, "WLAN: not connected",  &Font12, WHITE, BLACK);
     Paint_DrawString_EN(5, 85, "Blynk: not connected", &Font12, WHITE, BLACK);
   }
 
@@ -199,154 +203,145 @@ void showStatusPage(UBYTE *image) {
   if (getLocalTime(&timeinfo, 5000)) {
     char timeString[30];
     strftime(timeString, sizeof(timeString), "%d.%m.%Y %H:%M", &timeinfo);
-
     Paint_DrawString_EN(5, 110, timeString, &Font12, WHITE, BLACK);
   } else {
     Paint_DrawString_EN(5, 110, "Time: no sync", &Font12, WHITE, BLACK);
   }
 
   Paint_DrawString_EN(5, 170, BLYNK_TEMPLATE_NAME, &Font12, WHITE, BLACK);
-  Paint_DrawString_EN(5, 195, BLYNK_TEMPLATE_ID, &Font12, WHITE, BLACK);
+  Paint_DrawString_EN(5, 195, BLYNK_TEMPLATE_ID,   &Font12, WHITE, BLACK);
 
   EPD_2IN66_Display(image);
   EPD_2IN66_Sleep();
 }
 
-// ---------- SETUP FUNCTION ----------
-void setup(){
-  // Debug console
+// ==========================================================================
+// SETUP
+// ==========================================================================
+
+void setup() {
   Serial.begin(115200);
 
   pinMode(WAKE_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(1, INPUT);   // WiFi-Reset
 
-  // Set pin 1 as input (for WiFi reset)
-  pinMode(1, INPUT);
+  Wire.begin(47, 48);  // SDA=IO47, SCL=IO48
 
-  // Initialize DHT Sensor
-  Wire.begin(47, 48);   // SDA = Pin 24 / IO47, SCL = Pin 25 / IO48
-
-  if (!mpl.begin()) {
-    Serial.println("MPL3115A2 not found!");
-  } else {
-    Serial.println("MPL3115A2 found.");
-  }
+  if (!mpl.begin())    Serial.println("MPL3115A2 not found!");
+  else                 Serial.println("MPL3115A2 found.");
 
   if (!shtc3.begin()) {
     Serial.println("Couldn't find SHTC3 sensor!");
     while (1) delay(10);
   }
 
-  if (!maxlipo.begin()) {
-    Serial.println("MAX17048 not found!");
-  } else {
-    Serial.println("MAX17048 found.");
+  if (!maxlipo.begin()) Serial.println("MAX17048 not found!");
+  else                  Serial.println("MAX17048 found.");
+
+  EEPROM.begin(4);   // mind. 4 Bytes: Byte 0 = sleepMin, Bytes 1-2 = altitude
+
+  uint16_t savedAlt;
+  EEPROM.get(1, savedAlt);
+  if (savedAlt > 0 && savedAlt <= 10000) {
+    PRESSURE_ALTITUDE_M = (float)savedAlt;
   }
+  Serial.printf("Höhe aus EEPROM: %.0f m\n", PRESSURE_ALTITUDE_M);
 
-  // Initialize EEPROM (flash memory)
-  EEPROM.begin(1);
-
-  // Initialize Blynk app
+  //EEPROM.begin(1);
   BlynkEdgent.begin();
-
-  // Setup for E-Paper display
   DEV_Module_Init();
   EPD_2IN66_Init();
 }
 
-// ---------- MAIN LOOP ----------
-void loop(){
-  // Variables for storing temperature and humidity values
-  float temp = 0;
-  float hum = 0;
+// ==========================================================================
+// MAIN LOOP
+// ==========================================================================
+
+void loop() {
+  float temp     = 0;
+  float hum      = 0;
   float pressure = 0;
+  float p_qnh    = 0;
+  float trend    = 0;
+  float batteryPercent = 0;
 
-  bool statusMode = isLongPress();
+  // ── WiFi-Reset (GPIO1 beim Start gedrückt) ────────────────────────────
+  if (!digitalRead(1)) BlynkEdgent.ResetConfig();
 
-  // Reset WiFi config if button is pressed at the start
-  if(!digitalRead(1)) BlynkEdgent.ResetConfig();
-
-  // Initialize Image
-  UBYTE *BlackImage;
-  UWORD Imagesize = ((EPD_2IN66_WIDTH % 8 == 0)? (EPD_2IN66_WIDTH / 8 ): (EPD_2IN66_WIDTH / 8 + 1)) * EPD_2IN66_HEIGHT;
-  if((BlackImage = (UBYTE *)malloc(Imagesize)) == NULL) {
-    printf("Failed to apply for black memory...\r\n");
-    while(1);
+  // ── Image-Buffer anlegen ─────────────────────────────────────────────
+  UWORD Imagesize = ((EPD_2IN66_WIDTH % 8 == 0)
+                       ? (EPD_2IN66_WIDTH / 8)
+                       : (EPD_2IN66_WIDTH / 8 + 1)) * EPD_2IN66_HEIGHT;
+  UBYTE *BlackImage = (UBYTE *)malloc(Imagesize);
+  if (BlackImage == NULL) {
+    Serial.println("Failed to apply for black memory...");
+    while (1);
   }
   Paint_NewImage(BlackImage, EPD_2IN66_WIDTH, EPD_2IN66_HEIGHT, 0, WHITE);
 
-  if (statusMode) {
-  Paint_Clear(WHITE);
-
-  for(int i = 0; i < 120; i++) {
-    if(Blynk.connected()) {
-      configTime(0, 0, "pool.ntp.org");
-      setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
-      tzset();
-      break;
+  // ── Langer Button-Druck → Statusseite ────────────────────────────────
+  if (isLongPress()) {
+    Paint_Clear(WHITE);
+    for (int i = 0; i < 120; i++) {
+      if (Blynk.connected()) {
+        configTime(0, 0, "pool.ntp.org");
+        setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
+        tzset();
+        break;
+      }
+      BlynkEdgent.run();
+      delay(1000);
     }
-
-    BlynkEdgent.run();
-    delay(1000);
+    showStatusPage(BlackImage);
+    free(BlackImage);
+    delay(3000);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_15, 0);
+    esp_deep_sleep_start();
   }
 
-  showStatusPage(BlackImage);
+  // ── Sensoren lesen ────────────────────────────────────────────────────
+  readData(&temp, &hum,&batteryPercent);
+  readPressure(&pressure);
+  processPressure(pressure, &p_qnh, &trend);
 
-  delay(3000);
+  WeatherState weather = pressureHistoryReady()
+                           ? classifyWeather(p_qnh, trend)
+                           : WEATHER_UNKNOWN;
+  Serial.printf("[Weather] %s | QNH: %.1f hPa | Trend: %.2f hPa/3h\n",
+                weatherStateToString(weather), p_qnh, trend);
 
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_15, 0);
-  esp_deep_sleep_start();
-}
-
-  // Draw background image and display
-  //Paint_DrawBitMap(InncIoTWeatherStationImage_2);
-  Paint_DrawBitMap(gImage_inc);
-  EPD_2IN66_Display(BlackImage);
-
-  // ---------- Process data ----------
-  readData(&temp, &hum);                                                            // Get values from the DHT sensor
-  readPressure(&pressure);                                                          // Get pressure value from MPL3115A2 sensor
-  refreshData(BlackImage, temp, hum, pressure);                                                   // Refresh the display with the new values
-  refreshBattery(BlackImage);
-// Erst WLAN/Blynk verbinden
-for(int i=0; i<120; i++){
-  if(Blynk.connected()){
-
+  // ── Blynk verbinden, NTP holen, Daten senden ─────────────────────────
+for (int i = 0; i < 120; i++) {
+  if (Blynk.connected()) {
     configTime(0, 0, "pool.ntp.org");
     setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
     tzset();
 
-    sendData(&temp, &hum);
+    Blynk.syncVirtual(V3);
+    // ← run() aufrufen damit BLYNK_WRITE verarbeitet wird
+    for (int j = 0; j < 10; j++) {
+      BlynkEdgent.run();
+      delay(100);
+    }
+
+    sendData(&temp, &hum, p_qnh, batteryPercent);
     break;
-  } 
+  }
   BlynkEdgent.run();
   delay(1000);
 }
 
-// Jetzt erst Uhrzeit anzeigen
-refreshTime(BlackImage);
+  // ── Alles zeichnen & Display aktualisieren ────────────────────────────
+  refreshWeather(BlackImage, weather, temp, hum, p_qnh, batteryPercent);
 
-// Am Ende Display aktualisieren
-refreshIndicator(BlackImage, hum);
-  // Connect to network with stored credentials or start setup for WiFi (Trying for 120s)
-  for(int i=0; i<120; i++){
-    if(Blynk.connected()){
+  // ── Aufräumen & Deep Sleep ────────────────────────────────────────────
+  free(BlackImage);
+  delay(500);
 
-      // Send the data to blynk
-      sendData(&temp, &hum);
-      break;
-    } 
-    BlynkEdgent.run();
-    delay(1000);
-  }
-
-  delay(1000);                                                                          // delay to fully update the display and for the EEPROM to be updated
-
-  // Set sleep timer
-  esp_sleep_enable_timer_wakeup(EEPROM.read(0) * 60 * 1000 * 1000);
+  esp_sleep_enable_timer_wakeup(30*1000000);
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_15, 0);
-  // Disconnect and turn off web connections
   Blynk.disconnect();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  esp_deep_sleep_start();                                                               // Enter deep sleep mode
+  esp_deep_sleep_start();
 }
