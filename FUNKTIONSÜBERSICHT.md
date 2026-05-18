@@ -80,10 +80,20 @@ Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät für ein ESP32-S3-b
 
 #### Wetterklassifikation und Icon-Auswahl
 - Wenn `pressureHistoryReady()` false: `WEATHER_UNKNOWN`
+  - Ausgabewert: `Unknown`
+  - Display: `Kein Trend`
 - `WEATHER_BAD` bei QNH < 1000 hPa oder Trend < -3.0 hPa
+  - Ausgabewert: `Bad`
+  - Display: `Schlecht`
 - `WEATHER_SUNNY` bei QNH > 1015 hPa und Trend >= -0.5 hPa
+  - Ausgabewert: `Sunny`
+  - Display: `Sonnig`
 - `WEATHER_PARTLY` bei QNH > 1015 hPa und Trend < -0.5 hPa
+  - Ausgabewert: `Partly`
+  - Display: `Wechselnd`
 - sonst `WEATHER_CHANGING`
+  - Ausgabewert: `Changing`
+  - Display: `Wechselhaft`
 - Das Ergebnis bestimmt das gezeigte Wettericon und das Label auf dem Display
 
 ### 3.2 Blynk-Integration
