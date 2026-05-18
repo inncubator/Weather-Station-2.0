@@ -218,7 +218,7 @@ void setup() {
     PRESSURE_ALTITUDE_M = (float)savedAlt;
   }
   Serial.printf("Höhe aus EEPROM: %.0f m\n", PRESSURE_ALTITUDE_M);
-
+// Hello
   BlynkEdgent.begin();
   DEV_Module_Init();
   EPD_2IN66_Init();
