@@ -2,16 +2,16 @@
 
 ## 1. Projektübersicht
 
-Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät, das auf einem ESP32-S3 basiert und in Echtzeit Wetterdaten erfasst, lokal auf einem E-Paper-Display anzeigt und diese Daten über das Blynk-IoT-Framework in die Cloud sendet.
+Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät für ein ESP32-S3-basiertes System. Die Firmware erfasst Temperatur, Luftfeuchtigkeit, Luftdruck und Batteriestand, zeigt die Daten auf einem E-Paper-Display an und sendet sie optional an die Blynk IoT-Cloud.
 
 ### Hauptmerkmale:
-- 📊 Erfassung von Temperatur, Luftfeuchtigkeit und Luftdruck
-- 📡 Drahtlose Verbindung über WiFi und Blynk IoT-Cloud
-- 🖥️ E-Paper-Display (2.66 Zoll) mit niedriger Stromaufnahme
-- 🔋 Batteriebetrieb mit Deep-Sleep-Modus
-- ⏰ NTP-Zeit-Synchronisation
-- 🎯 Visueller Feuchtigkeitsindikator (Smiley-Status)
-- ⚙️ Konfigurierbare Messintervalle
+- 📊 Messung von Temperatur, Luftfeuchtigkeit, Luftdruck und Batterieladung
+- 📡 WLAN-Verbindung und Blynk-Cloud-Anbindung
+- 🖥️ E-Paper-Display (Waveshare EPD-2IN66, 296x152)
+- 🔋 Deep-Sleep-basiertes Energiemanagement
+- ⏰ NTP-Zeit-Synchronisation mit CET/CEST
+- 🌦 Drucktrendbasierte Wetterklassifikation
+- ⚙️ Höhenkorrektur über EEPROM-konfigurierbare Altitude-Einstellung
 
 ---
 
@@ -20,37 +20,32 @@ Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät, das auf einem ESP3
 ### 2.1 Mikrocontroller
 - **Board**: ESP32-S3 WROOM-1
 - **Framework**: Arduino (PlatformIO)
-- **Betriebsspannung**: 3.3V (USB oder Batterie)
-- **Speicher**: 
-  - RAM: 8 MB
-  - Flash: für Firmware und Konfiguration
+- **Spannung**: 3.3V
 
 ### 2.2 Sensoren
 
 | Sensor | Modell | Funktion | Schnittstelle |
 |--------|--------|----------|---------------|
-| Temperatur & Luftfeuchtigkeit | Adafruit SHTC3 | Misst Temperatur und Luftfeuchtigkeit | I2C |
-| Luftdruck | Adafruit MPL3115A2 | Misst barometrischen Luftdruck | I2C |
-| Batterie-Überwachung | Adafruit MAX17048 | Überwacht Batterieladung | I2C |
+| Temperatur & Luftfeuchtigkeit | Adafruit SHTC3 | Temperatur und relative Luftfeuchtigkeit | I2C |
+| Luftdruck | Adafruit MPL3115A2 | Barometrischer Druck | I2C |
+| Batterie-Überwachung | Adafruit MAX17048 | Batteriestand in % | I2C |
 
 ### 2.3 Display
-- **Typ**: E-Paper (ePaper) Display
-- **Größe**: 2.66 Zoll (67,4 mm)
-- **Auflösung**: 296 x 152 Pixel (1-Bit Schwarzweiß)
-- **Verbindung**: SPI
-- **Stromaufnahme**: Minimal im Ruhezustand
-- **Technologie**: Waveshare EPD-2IN66
+- **Typ**: E-Paper (EPD)
+- **Modell**: Waveshare EPD-2IN66
+- **Auflösung**: 296 x 152 Pixel
+- **Farbe**: 1-Bit Schwarzweiß
+- **Schnittstelle**: SPI
 
-### 2.4 Eingabeschnittstellen
-- **Wake-Button**: GPIO-15 (mit Pull-up)
-  - Normaler Druck: Gerät aufwecken
-  - Längerdruck (2 Sekunden): Statusseite anzeigen
-- **WiFi-Reset**: GPIO-1
-  - Zum Zurücksetzen der WiFi-Konfiguration
+### 2.4 Eingabe & Reset
+- **Wake-Button**: GPIO-15 mit `INPUT_PULLUP`
+  - Normaler Druck: Prozess ausführen und anschließend schlafen
+  - Langer Druck (> 2 Sekunden): Statusseite anzeigen
+- **WiFi-Reset**: GPIO-1 als Eingabe zum Zurücksetzen der Blynk/WiFi-Konfiguration
 
 ### 2.5 Kommunikation
-- **WiFi**: Integriertes ESP32-WLAN (2.4 GHz)
-- **I2C**: GPIO-47 (SDA) und GPIO-48 (SCL) für Sensoren
+- **WiFi**: ESP32 integriert, 2.4 GHz
+- **I2C**: SDA = GPIO-47, SCL = GPIO-48
 
 ---
 
@@ -58,146 +53,142 @@ Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät, das auf einem ESP3
 
 ### 3.1 Sensorauswertung
 
-#### Temperature & Humidity (SHTC3)
-```cpp
-readData(&temp, &hum)
-```
-- Liest Temperatur- und Luftfeuchtigkeitswerte aus
-- Validiert die Daten auf NaN-Werte
-- Gibt Werte in °C und % Luftfeuchtigkeit zurück
+#### `readData(&temp, &hum, &batteryPercent)`
+- Liest Temperatur und Luftfeuchtigkeit vom SHTC3
+- Liest Batterieladung vom MAX17048
+- Validiert Messwerte auf NaN
+- Beschneidet Batteriewerte auf den Bereich 0-100%
 
-#### Luftdruck (MPL3115A2)
-```cpp
-readPressure(&pressure)
-```
-- Liest barometrischen Druck in hPa aus
-- Validiert die Druckwerte
+#### `readPressure(&pressure)`
+- Liest den Rohdruck in hPa vom MPL3115A2
+- Prüft auf ungültige Werte
 
-#### Batterie-Status
-```cpp
-refreshBattery(&image)
-```
-- Liest aktuelle Batterieladung aus (0-100%)
-- Zeigt 5-Stufen-Balkendiagramm auf Display
-  - 0-10%: 0 Balken
-  - 10-30%: 1 Balken
-  - 30-50%: 2 Balken
-  - 50-70%: 3 Balken
-  - 70-90%: 4 Balken
-  - 90-100%: 5 Balken
+#### `processPressure(pressure, &p_qnh, &trend)`
+- Normiert Rohdruck auf Meereshöhe (QNH)
+- Verwendet die Höhenkorrektur `PRESSURE_ALTITUDE_M`
+- Speichert den QNH-Wert im RTC-Ringpuffer über Deep Sleep
+- Berechnet den Trend gegenüber dem ältesten gespeicherten Wert
+- Gibt Trend und QNH aus
 
-### 3.2 Display-Management
+#### Wetterklassifikation
+- `WEATHER_BAD` bei niedrigem Druck (< 1000 hPa) oder starkem Abfall (< -3.0 hPa)
+- `WEATHER_SUNNY` bei hohem Druck (> 1015 hPa) und stabilen/steigenden Werten
+- `WEATHER_PARTLY` bei hohem Druck, aber fallendem Trend
+- `WEATHER_CHANGING` bei Übergangslage
 
-#### E-Paper Display Rendering
-- **Hintergrund**: InnCubator-Logo als Basis-Hintergrundbild
-- **Partielle Aktualisierung**: Nur bestimmte Display-Bereiche neu zeichnen (spart Energie)
-- **Auflösung**: 296 x 152 Pixel
-- **Farben**: Schwarz-Weiß
+### 3.2 Blynk-Integration
 
-#### Display-Elemente
+#### Virtuelle Pins
+- `V0`: Temperatur (°C)
+- `V1`: Luftfeuchtigkeit (%)
+- `V2`: Normierter Druck QNH (hPa)
+- `V3`: Altitude-Einstellung (EEPROM)
+- `V4`: Batterieladung (%)
 
-| Element | Funktion | Position |
-|---------|----------|----------|
-| Temperatur | Anzeige in °C mit 1 Dezimalstelle | Oben rechts |
-| Luftfeuchtigkeit | Anzeige in % mit 1 Dezimalstelle | Mitte rechts |
-| Luftdruck | Anzeige in hPa mit 1 Dezimalstelle | Unten rechts |
-| Feuchtigkeitsindikator (Smiley) | Visuelles Feedback je nach Feuchtigkeitswert | Unten links |
-| Aktualisierungszeit | Zeitstempel der letzten Messung (HH:MM Format) | Unten |
-| Batteriestandanzeige | 5-Balken-Diagramm der Batterieladung | Oben links |
+#### Datenversand
+- `sendData(&temp, &hum, p_qnh, batteryPercent)` überträgt Messwerte an Blynk
+- Nur bei bestehender Blynk-Verbindung
 
-#### Feuchtigkeitsindikatoren
-```cpp
-refreshIndicator(&image, humidity)
-```
-- **30-40% (Niedrig)**: Trockenes Smiley-Symbol
-- **40-60% (Ideal)**: Glückliches Smiley-Symbol
-- **60-70% (Hoch)**: Warnendes Smiley-Symbol
-- **>70% (Sehr Hoch)**: Besorgtes Smiley-Symbol
-- **<30% (Sehr Niedrig)**: Trauriges Smiley-Symbol
+#### Konfiguration über Blynk
+- `BLYNK_WRITE(V3)` speichert die eingestellte Höhe in EEPROM
+- `PRESSURE_ALTITUDE_M` wird dadurch angepasst
 
-### 3.3 WiFi & Blynk-Integration
+### 3.3 Display-Management
 
-#### WiFi-Verbindung
-- Verwendet **BlynkEdgent** für automatische WiFi-Verwaltung
-- Versucht sich für max. 120 Sekunden zu verbinden
-- Fallback: Konfigurationsmodus bei fehlender Konfiguration
+#### `refreshWeather(BlackImage, weather, temp, hum, p_qnh, batteryPercent)`
+- Zeichnet das InnCubator-Hintergrundbild
+- Zeigt Temperatur, Luftfeuchtigkeit, Druck, Batteriestand, Wettericon und Uhrzeit
+- Ruft anschließend `EPD_2IN66_Display()` und `EPD_2IN66_Sleep()` auf
 
-#### Blynk IoT-Cloud
-- **Template ID**: TMPL4KNN1-VFn (konfigurierbar pro Gerät)
-- **Template Name**: WS_1_MW (pro Umgebung anpassbar)
-- **Virtuelle Pins**:
-  - **V5**: Temperaturwert (°C)
-  - **V6**: Luftfeuchtigkeitswert (%)
+#### Anzeigeelemente
+| Element | Inhalt | Position |
+|---------|--------|----------|
+| Temperatur | `temp` in °C | links oben |
+| Luftfeuchtigkeit | `hum` in % | Mitte links |
+| Druck | QNH in hPa | unten links |
+| Batteriestand | 5 Balken | oben links |
+| Wettericon | Klassifizierter Wetterzustand | unten links |
+| Uhrzeit | lokale Uhrzeit `HH:MM` | unten |
 
-#### Datenübertragung
-```cpp
-sendData(&temp, &hum)
-```
-- Sendet Temperatur auf V5
-- Sendet Luftfeuchtigkeit auf V6
-- Erfolgt nur bei erfolgreicher Blynk-Verbindung
+#### Batteriestand
+- >= 90%: 5 Balken
+- >= 70%: 4 Balken
+- >= 50%: 3 Balken
+- >= 30%: 2 Balken
+- >= 10%: 1 Balken
+- < 10%: 0 Balken
 
-### 3.4 Zeit-Synchronisation
+#### Wettericons
+- `Sunny` → Sonnig
+- `Partly` → Wechselnd
+- `Changing` → Wechselhaft
+- `Bad` → Schlecht
+- `Unknown` → Kein Trend
 
-#### NTP-Zeit
-- Synchronisiert mit **pool.ntp.org**
-- Zeitzone: **CET-1CEST,M3.5.0/2,M10.5.0/3** (Mitteleuropäische Zeit)
-- Wird alle 5 Sekunden versucht (mit Timeout)
-
-#### Zeit-Anzeige
-```cpp
-refreshTime(&image)
-```
-- Zeigt Messzeitstempel im Format "HH:MM" auf Display
-- Wird nach erfolgreicher Zeit-Synchronisation angezeigt
-
-### 3.5 Statusseite
+### 3.4 Statusseite
 
 #### Aktivierung
-- Längerdruck auf Wake-Button (>2 Sekunden)
-- Zeigt Geräteinformation und Verbindungsstatus
+- Langer Druck auf Wake-Button (> 2 Sekunden)
+- Versucht bis zu 120 Sekunden, Blynk und Zeit zu verbinden
 
-#### Angezeigter Status
-- **WLAN**: Connected/Not Connected + SSID
-- **Blynk**: Connected/Not Connected
-- **Zeit**: Aktuelles Datum und Uhrzeit (Format: DD.MM.YYYY HH:MM)
-- **Device-Info**: Template Name und Template ID
+#### Inhalt
+- WLAN-Status + SSID
+- Blynk-Verbindungsstatus
+- Datum und Uhrzeit (`DD.MM.YYYY HH:MM`)
+- Blynk Template Name und Template ID
+
+### 3.5 Zeit-Synchronisation
+
+- `configTime()` mit `pool.ntp.org`
+- Zeitzone `CET-1CEST,M3.5.0/2,M10.5.0/3`
+- Anzeige auf Display, falls lokal verfügbar
+- Statusseite zeigt `Time: no sync`, wenn NTP nicht erreichbar
 
 ---
 
 ## 4. Stromverwaltung
 
-### 4.1 Deep-Sleep-Modus
-- Nach jeder Messung: ESP32 wird in den Tiefschlaf versetzt
-- Stromaufnahme: Minimal (<100 µA im Sleep)
-- Wake-Quellen:
-  - **Timer-basiert**: Konfigurierbar über EEPROM (Standard: Wert in EEPROM Adresse 0 * 60 Sekunden)
-  - **Button-basiert**: GPIO-15 Low-Signal (Wake-Button)
+### 4.1 Deep Sleep
+- Nach jeder Messung und Anzeige geht das Gerät in Deep Sleep
+- Weckt auf durch:
+  - Timer nach 30 Sekunden
+  - Wake-Button an GPIO-15
 
-### 4.2 EEPROM-Speicherverwaltung
-- **Adresse 0**: Mess-Intervall in Minuten (beim Booten gelesen)
-- Wird zur Konfiguration von Sleep-Dauer verwendet
+### 4.2 Schlafsequenz
+- Trennt Blynk-Verbindung
+- Trennt WiFi
+- Schaltet WiFi-Modus ab
+- Aktiviert Deep Sleep
 
-### 4.3 Power-Down Sequenz
-1. WiFi trennen
-2. Blynk trennen
-3. WiFi-Modus ausschalten
-4. Deep-Sleep mit Timer- und Button-Wake-Quelle aktivieren
-5. Gerät schläft bis zum nächsten Weck-Event
+### 4.3 EEPROM
+- `EEPROM.begin(4)` reserviert 4 Bytes
+- Speichert die Höhe in EEPROM-Adressbereich 1-2
+- Erlaubt QNH-Korrekturen nach Höhenanpassung
 
 ---
 
 ## 5. Starten und Betriebsablauf
 
-### 5.1 Initialisierung (Setup)
-1. Serial Debug-Konsole initialisieren (115200 Baud)
-2. GPIO-Pin konfigurieren (Button, WiFi-Reset)
-3. I2C-Bus initialisieren (GPIO-47 SDA, GPIO-48 SCL)
-4. Sensoren initialisieren:
-   - SHTC3 Temperatur/Luftfeuchtigkeit
-   - MPL3115A2 Druck
-   - MAX17048 Batterie-Überwachung
-5. EEPROM initialisieren
+### 5.1 Setup
+1. Serielle Ausgabe konfigurieren (115200 Baud)
+2. GPIOs einrichten: Wake-Button und WiFi-Reset
+3. I2C initialisieren auf GPIO-47 (SDA) und GPIO-48 (SCL)
+4. Sensoren initialisieren: MPL3115A2, SHTC3, MAX17048
+5. EEPROM initialisieren und Höhe auslesen
+6. BlynkEdgent starten
+7. EPD-Display initialisieren
+
+### 5.2 Loop
+1. Prüft WiFi-Reset beim Start über GPIO-1
+2. Allokiert Display-Buffer und bereitet den Grafikpuffer vor
+3. Langer Druck zeigt die Statusseite und löst Deep Sleep aus
+4. Liest Sensoren und Batteriestatus
+5. Berechnet QNH und Drucktrend
+6. Bestimmt `WeatherState`
+7. Versucht, Blynk zu verbinden, synchronisiert Zeit und sendet Daten
+8. Aktualisiert das E-Paper-Display
+9. Gibt Speicher frei und startet Deep Sleep
+
 6. Blynk EdgeAgent initialisieren
 7. E-Paper Display initialisieren
 
