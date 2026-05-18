@@ -209,24 +209,24 @@ Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät für ein ESP32-S3-b
 │      Power-On (Deep-Sleep beendet)      │
 ├─────────────────────────────────────────┤
 │    1. Button-Status prüfen              │
-│       ├─ Normaler Druck: Messmodus     │
-│       └─ Langer Druck: Statusmodus     │
+│       ├─ Normaler Druck: Messmodus      │
+│       └─ Langer Druck: Statusmodus      │
 ├─────────────────────────────────────────┤
 │    2. Statusmodus (>2s Druck)?          │
-│       ├─ JA: Statusseite zeigen        │
+│       ├─ JA: Statusseite zeigen         │
 │       │    → Zurück in Deep-Sleep       │
-│       └─ NEIN: Weiter zum Schritt 3    │
+│       └─ NEIN: Weiter zum Schritt 3     │
 ├─────────────────────────────────────────┤
 │    3. Hintergrundbild zeichnen          │
 ├─────────────────────────────────────────┤
 │    4. Sensoren auslesen                 │
-│       ├─ Temperatur & Luftfeuchtigkeit │
-│       ├─ Luftdruck                     │
-│       └─ Batteriestand                 │
+│       ├─ Temperatur & Luftfeuchtigkeit  │
+│       ├─ Luftdruck                      │
+│       └─ Batteriestand                  │
 ├─────────────────────────────────────────┤
 │    5. Display aktualisieren             │
-│       ├─ Sensordaten anzeigen          │
-│       └─ Batteriestand anzeigen        │
+│       ├─ Sensordaten anzeigen           │
+│       └─ Batteriestand anzeigen         │
 ├─────────────────────────────────────────┤
 │    6. WiFi verbinden (max. 120s)        │
 ├─────────────────────────────────────────┤
