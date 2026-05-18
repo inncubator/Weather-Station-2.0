@@ -38,17 +38,23 @@ void processPressure(float p_raw_hpa, float *p_qnh_out, float *trend_out) {
 }
 
 WeatherState classifyWeather(float p_qnh, float trend) {
-  // Schlechtwetter: Absolutdruck tief ODER starker Abfall
-  if (p_qnh < 1000.0f || trend < -3.0f)   return WEATHER_BAD;
+  // ── SCHLECHT: Tiefdruck absolut ODER starker Abfall ──────────────────
+  if (p_qnh < 1000.0f || trend < -3.0f)
+    return WEATHER_BAD;
 
-  // Schön: Hochdruck und stabil oder steigend
-  if (p_qnh > 1015.0f && trend >= -0.5f)  return WEATHER_SUNNY;
+  // ── SCHÖN: echtes Hoch, stabil oder steigend ─────────────────────────
+  if (p_qnh > 1020.0f && trend >= -0.5f)
+    return WEATHER_SUNNY;
 
-  // Hochdruck aber fallend: Achtung
-  if (p_qnh > 1015.0f && trend < -0.5f)   return WEATHER_PARTLY;
+  // ── ACHTUNG: Hoch, aber merklich fallend ─────────────────────────────
+  if (p_qnh > 1020.0f && trend < -0.5f)
+    return WEATHER_PARTLY;
 
-  // Übergangslage
-  return WEATHER_CHANGING;
+  // ── WECHSELHAFT: Übergangszone 1000–1020 hPa ─────────────────────────
+  // Unterscheidung nach Tendenz:
+  if (trend > 1.0f)   return WEATHER_SUNNY;    // Druck steigt deutlich → aufklarend
+  if (trend < -1.5f)  return WEATHER_PARTLY;   // Druck fällt merklich  → verschlechternd
+                      return WEATHER_CHANGING;  // stabil in Übergangszone
 }
 
 const char* weatherStateToString(WeatherState state) {
