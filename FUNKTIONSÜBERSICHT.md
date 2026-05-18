@@ -79,22 +79,24 @@ Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät für ein ESP32-S3-b
 - `pressureHistoryReady()` prüft, ob der Ringpuffer voll ist
 
 #### Wetterklassifikation und Icon-Auswahl
-- Wenn `pressureHistoryReady()` false: `WEATHER_UNKNOWN`
-  - Ausgabewert: `Unknown`
-  - Display: `Kein Trend`
-- `WEATHER_BAD` bei QNH < 1000 hPa oder Trend < -3.0 hPa
-  - Ausgabewert: `Bad`
-  - Display: `Schlecht`
-- `WEATHER_SUNNY` bei QNH > 1015 hPa und Trend >= -0.5 hPa
-  - Ausgabewert: `Sunny`
-  - Display: `Sonnig`
-- `WEATHER_PARTLY` bei QNH > 1015 hPa und Trend < -0.5 hPa
-  - Ausgabewert: `Partly`
-  - Display: `Wechselnd`
-- sonst `WEATHER_CHANGING`
-  - Ausgabewert: `Changing`
-  - Display: `Wechselhaft`
-- Das Ergebnis bestimmt das gezeigte Wettericon und das Label auf dem Display
+- Vor der Klassifikation prüft die Schleife `pressureHistoryReady()`:
+  - Wenn false: `WEATHER_UNKNOWN`
+    - Ausgabewert: `Unknown`
+    - Display: `No Trend`
+- Wenn der Ringpuffer voll ist, wird `classifyWeather(p_qnh, trend)` aufgerufen.
+- Die Klassifikation folgt dieser Reihenfolge:
+  1. `WEATHER_BAD`, wenn `p_qnh < 1000.0f` oder `trend < -3.0f`
+     - Ausgabewert: `Bad`
+     - Display: `Bad`
+  2. `WEATHER_SUNNY`, wenn `p_qnh > 1020` und `trend >= -0.5f`
+     - Ausgabewert: `Sunny`
+     - Display: `Sunny`
+  3. `WEATHER_PARTLY`, wenn `p_qnh > 1020` und `trend < -0.5f`
+     - Ausgabewert: `Partly`
+     - Display: `Partly`
+  4. Andernfalls: `WEATHER_CHANGING`
+     - Ausgabewert: `Changing`
+     - Display: `Changing`
 
 ### 3.2 Blynk-Integration
 
