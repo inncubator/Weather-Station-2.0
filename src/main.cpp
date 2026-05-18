@@ -303,3 +303,5 @@ for (int i = 0; i < 120; i++) {
   WiFi.mode(WIFI_OFF);
   esp_deep_sleep_start();
 }
+
+// Peter Hallo 11:37
