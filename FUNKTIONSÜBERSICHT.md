@@ -5,13 +5,13 @@
 Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät für ein ESP32-S3-basiertes System. Die Firmware erfasst Temperatur, Luftfeuchtigkeit, Luftdruck und Batteriestand, zeigt die Daten auf einem E-Paper-Display an und sendet sie optional an die Blynk IoT-Cloud.
 
 ### Hauptmerkmale:
-- 📊 Messung von Temperatur, Luftfeuchtigkeit, Luftdruck und Batterieladung
-- 📡 WLAN-Verbindung und Blynk-Cloud-Anbindung
-- 🖥️ E-Paper-Display (Waveshare EPD-2IN66, 296x152)
-- 🔋 Deep-Sleep-basiertes Energiemanagement
-- ⏰ NTP-Zeit-Synchronisation mit CET/CEST
-- 🌦 Drucktrendbasierte Wetterklassifikation
-- ⚙️ Höhenkorrektur über EEPROM-konfigurierbare Altitude-Einstellung
+- Messung von Temperatur, Luftfeuchtigkeit, Luftdruck und Batterieladung
+- WLAN-Verbindung und Blynk-Cloud-Anbindung
+- E-Paper-Display (Waveshare EPD-2IN66, 296x152)
+- Deep-Sleep-basiertes Energiemanagement
+- NTP-Zeit-Synchronisation mit CET/CEST
+- Drucktrendbasierte Wetterklassifikation
+- Höhenkorrektur über EEPROM-konfigurierbare Altitude-Einstellung
 
 ---
 
@@ -63,18 +63,28 @@ Die **Weather-Station 2.0** ist ein IoT-Wetterstation-Gerät für ein ESP32-S3-b
 - Liest den Rohdruck in hPa vom MPL3115A2
 - Prüft auf ungültige Werte
 
-#### `processPressure(pressure, &p_qnh, &trend)`
-- Normiert Rohdruck auf Meereshöhe (QNH)
-- Verwendet die Höhenkorrektur `PRESSURE_ALTITUDE_M`
-- Speichert den QNH-Wert im RTC-Ringpuffer über Deep Sleep
-- Berechnet den Trend gegenüber dem ältesten gespeicherten Wert
-- Gibt Trend und QNH aus
+### 3.1.1 Normierter Druck, Trend und Wettericon
 
-#### Wetterklassifikation
-- `WEATHER_BAD` bei niedrigem Druck (< 1000 hPa) oder starkem Abfall (< -3.0 hPa)
-- `WEATHER_SUNNY` bei hohem Druck (> 1015 hPa) und stabilen/steigenden Werten
-- `WEATHER_PARTLY` bei hohem Druck, aber fallendem Trend
-- `WEATHER_CHANGING` bei Übergangslage
+#### `correctToQNH(p_raw_hpa)`
+- Normiert den gemessenen Rohdruck auf Meereshöhe (QNH)
+- Verwendet die Höhenkorrektur `PRESSURE_ALTITUDE_M`
+- Formel: `p_raw_hpa * expf(PRESSURE_ALTITUDE_M / 8434.5f)`
+- Gibt QNH in hPa zurück
+
+#### `processPressure(p_raw_hpa, &p_qnh_out, &trend_out)`
+- Wandelt Rohdruck in QNH um
+- Schreibt den QNH-Wert in einen RTC-Ringpuffer, der den Zustand über Deep Sleep erhält
+- Berechnet `trend` als Differenz zwischen aktuellem QNH und dem ältesten gespeicherten Wert
+- Solange der Ringpuffer noch nicht voll ist, bleibt `trend` bei `0.0`
+- `pressureHistoryReady()` prüft, ob der Ringpuffer voll ist
+
+#### Wetterklassifikation und Icon-Auswahl
+- Wenn `pressureHistoryReady()` false: `WEATHER_UNKNOWN`
+- `WEATHER_BAD` bei QNH < 1000 hPa oder Trend < -3.0 hPa
+- `WEATHER_SUNNY` bei QNH > 1015 hPa und Trend >= -0.5 hPa
+- `WEATHER_PARTLY` bei QNH > 1015 hPa und Trend < -0.5 hPa
+- sonst `WEATHER_CHANGING`
+- Das Ergebnis bestimmt das gezeigte Wettericon und das Label auf dem Display
 
 ### 3.2 Blynk-Integration
 
